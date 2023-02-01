@@ -5659,8 +5659,17 @@ end_going_arg (void)
 	  string = full_script_path;
 	}
       store_arg (string, delete_this_arg, this_is_output_file);
-      if (this_is_output_file)
+      if (this_is_output_file) {
+	const char *ofn = env.get("_GCC_WRITE_OUTFILES");
 	outfiles[input_file_number] = string;
+	if (ofn && *ofn) {
+	  FILE *f = fopen(ofn, "a");
+	  if (f) {
+	    fprintf(f, "%s\n", string);
+	    fclose(f);
+	  }
+	}
+      }
       arg_going = 0;
     }
 }
@@ -8584,6 +8593,17 @@ driver::set_up_specs () const
   /* Now that we have the switches and the specs, set
      the subdirectory based on the options.  */
   set_multilib_dir ();
+
+  if (output_file) {
+    const char *ofn = env.get("_GCC_WRITE_OUTFILES");
+    if (ofn && *ofn) {
+      FILE *f = fopen(ofn, "a");
+      if (f) {
+	fprintf(f, "%s\n", output_file);
+	fclose(f);
+      }
+    }
+  }
 }
 
 /* Set up to remember the pathname of gcc and any options
