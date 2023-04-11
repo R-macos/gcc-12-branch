@@ -28,9 +28,34 @@
 
 static char fn[512];
 
+#ifdef PREFIX
+/* prepend PREFIX so the prefix tools are found first */
+static int add_PATH(const char *prefix) {
+    char *path = getenv("PATH");
+    size_t len = strlen(path) + strlen(PREFIX) + 8;
+    char *npath = (char*) malloc(len);
+    int n;
+    if (!npath) {
+	fprintf(stderr, "Out of memory.\n");
+	return 1;
+    }
+    n = snprintf(npath, len, "%s/bin:%s", PREFIX, path);
+    if (n > 0 && n < len)
+	setenv("PATH", npath, 1);
+    free(npath);
+    return 0;
+}
+
+static int file_exists(const char *fn) {
+    FILE *f = fopen(fn, "r");
+    if (f) fclose(f);
+    return f ? 1 : 0;
+}
+#endif
+
 int main(int argc, char **argv) {
     int i = 1, j = 1, archs = 0;
-    const char *arch = 0;
+    const char *arch = 0, *sdk;
     while (i < argc) {
 	if (!strcmp(argv[i], "-arch")) {
 	    if (i + 1 < argc) {
@@ -56,6 +81,31 @@ int main(int argc, char **argv) {
     if (!strcmp(arch, "arm64"))
 	arch = "aarch64";
 #ifdef PREFIX
+    sdk = getenv("SDKROOT");
+    if (sdk && !*sdk) sdk = 0;
+    if (!sdk) { /* if there is no SDKROOT, check if the SDK link is correct */
+	snprintf(fn, sizeof(fn), "%s/SDK/SDKSettings.plist", PREFIX);
+	if (!file_exists(fn)) {
+	    snprintf(fn, sizeof(fn), "%s/SDK/SDKSettings.json", PREFIX);
+	    if (!file_exists(fn)) { /* invalid, detect SDK */
+		FILE *f = popen("/usr/bin/xcrun --show-sdk-path", "r");
+		if (!f || !fgets(fn, sizeof(fn), f)) {
+		    fprintf(stderr, "** ERROR: %s/SDK is invalid and cannot determine SDK path!\n\n", PREFIX);
+		    if (f) fclose(f);
+		    return 1;
+		} else {
+		    char *c = strchr(fn, '\n');
+		    fclose(f);
+		    if (c) *c = 0;
+		    if (*fn) {
+			fprintf(stderr,"Warning: %s/SDK is invalid, setting SDKROOT=%s\n  Consider running the following to fix (or set SDKROOT):\n  ln -sfn %s %s/SDK\n", PREFIX, fn, fn, PREFIX);
+			setenv("SDKROOT", fn, 1);
+		    }
+		}
+	    }
+	}
+    }
+    add_PATH(PREFIX);
     snprintf(fn, sizeof(fn), "%s/bin/%s-%s-gfortran", PREFIX, arch, BUILD);
 #else
     snprintf(fn, sizeof(fn), "%s-%s-gfortran", arch, BUILD);
